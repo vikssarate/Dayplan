@@ -1,3 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Day Plan — Tasks + Time (IST)</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#0f1220; --card:#181c2f; --ink:#eef1ff; --muted:#9aa3c7; --line:#2a3052; --ok:#7bd88f; --warn:#ffd166; --bad:#ff7575; --accent:#6ca8ff
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+  a{color:var(--accent);text-decoration:none}
+  .wrap{max-width:1200px;margin:0 auto;padding:14px}
+  header,footer{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 0}
+  h1{margin:0;font-size:18px;font-weight:800}
+  .panel{background:var(--card);border-radius:12px;padding:12px;box-shadow:0 0 0 1px var(--line) inset}
+  .toolbar{display:flex;gap:8px;align-items:center}
+  button{border:1px solid var(--line);background:#0b1128;color:var(--ink);padding:7px 10px;border-radius:8px;font-weight:600;cursor:pointer}
+  button:hover{border-color:#334;transform:translateY(-0.5px)}
+  .ghost{opacity:.7}
+  .grid{display:grid;grid-template-columns: 1.4fr 0.6fr repeat(7, 70px) 44px; gap:8px; align-items:center}
+  .head{font-size:12px;color:var(--muted)}
+  input[type="text"]{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:#0b1128;color:var(--ink)}
+  input[type="time"]{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:#0b1128;color:var(--ink)}
+  .daycell{display:flex;align-items:center;justify-content:center}
+  .daycell label{display:flex;gap:6px;align-items:center;cursor:pointer;font-size:12px;color:var(--muted)}
+  .row{min-height:46px}
+  .empty{opacity:.6}
+  .danger{color:#ffb3b3;border-color:#ffb3b3}
+  .del{width:40px;height:36px;display:grid;place-items:center}
+  .status{font-size:12px;color:var(--muted)}
+  .pill{display:inline-flex;align-items:center;gap:6px;background:#0b1128;border:1px solid var(--line);padding:6px 8px;border-radius:999px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+  .hint{font-size:12px;color:var(--muted);margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Day Plan</h1>
+    <div class="toolbar">
+      <span class="pill"><span>Time zone:</span><strong class="mono">IST (Asia/Kolkata)</strong></span>
+      <button id="addBtn">+ Add Task</button>
+      <button id="syncBtn" title="Manual push+pull">Sync</button>
+      <button id="pullBtn" title="Manual pull only">Pull</button>
+      <span id="syncStatus" class="status">Sync: idle</span>
+    </div>
+  </header>
+
+  <section class="panel">
+    <div class="grid head" style="margin-bottom:6px">
+      <div>Task Name</div>
+      <div>Time [IST]</div>
+      <div class="daycell">Mon</div>
+      <div class="daycell">Tue</div>
+      <div class="daycell">Wed</div>
+      <div class="daycell">Thu</div>
+      <div class="daycell">Fri</div>
+      <div class="daycell">Sat</div>
+      <div class="daycell">Sun</div>
+      <div></div>
+    </div>
+    <div id="list"></div>
+    <div class="hint">Tick the weekdays for recurring schedule. Everything autosaves and live-syncs.</div>
+  </section>
+
+  <footer>
+    <div class="status" id="counts">0 tasks</div>
+    <div class="status">Remote DB: <span class="mono">https://couch.techstudy.me/plan</span></div>
+  </footer>
+</div>
+
+<!-- PouchDB -->
 <script src="https://cdn.jsdelivr.net/npm/pouchdb@8.0.1/dist/pouchdb.min.js"></script>
 <script>
 (function(){
@@ -215,3 +291,13 @@
 
 })();
 </script>
+<!--
+  CouchDB setup (one-time):
+  1) Create DB: plan
+  2) Make it public: in Database > Security, leave Admins and Members empty (or add "nobody").
+  3) Enable CORS globally: Origins=*, Methods=GET,PUT,POST,DELETE,HEAD,OPTIONS, Content-Type=application/json
+     and set "Enable CORS" + "Enable credentials" off (since public).
+  That’s it. Open this page on any device → it pulls instantly; edits push live.
+-->
+</body>
+</html>
