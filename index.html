@@ -1,84 +1,8 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>Day Plan — Tasks + Time (IST)</title>
-<link rel="icon" href="data:,">
-<style>
-  :root{
-    --bg:#0f1220; --card:#181c2f; --ink:#eef1ff; --muted:#9aa3c7; --line:#2a3052; --ok:#7bd88f; --warn:#ffd166; --bad:#ff7575; --accent:#6ca8ff
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
-  a{color:var(--accent);text-decoration:none}
-  .wrap{max-width:1200px;margin:0 auto;padding:14px}
-  header,footer{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 0}
-  h1{margin:0;font-size:18px;font-weight:800}
-  .panel{background:var(--card);border-radius:12px;padding:12px;box-shadow:0 0 0 1px var(--line) inset}
-  .toolbar{display:flex;gap:8px;align-items:center}
-  button{border:1px solid var(--line);background:#0b1128;color:var(--ink);padding:7px 10px;border-radius:8px;font-weight:600;cursor:pointer}
-  button:hover{border-color:#334;transform:translateY(-0.5px)}
-  .ghost{opacity:.7}
-  .grid{display:grid;grid-template-columns: 1.4fr 0.6fr repeat(7, 70px) 44px; gap:8px; align-items:center}
-  .head{font-size:12px;color:var(--muted)}
-  input[type="text"]{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:#0b1128;color:var(--ink)}
-  input[type="time"]{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:#0b1128;color:var(--ink)}
-  .daycell{display:flex;align-items:center;justify-content:center}
-  .daycell label{display:flex;gap:6px;align-items:center;cursor:pointer;font-size:12px;color:var(--muted)}
-  .row{min-height:46px}
-  .empty{opacity:.6}
-  .danger{color:#ffb3b3;border-color:#ffb3b3}
-  .del{width:40px;height:36px;display:grid;place-items:center}
-  .status{font-size:12px;color:var(--muted)}
-  .pill{display:inline-flex;align-items:center;gap:6px;background:#0b1128;border:1px solid var(--line);padding:6px 8px;border-radius:999px}
-  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
-  .hint{font-size:12px;color:var(--muted);margin-top:8px}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <header>
-    <h1>Day Plan</h1>
-    <div class="toolbar">
-      <span class="pill"><span>Time zone:</span><strong class="mono">IST (Asia/Kolkata)</strong></span>
-      <button id="addBtn">+ Add Task</button>
-      <button id="syncBtn" title="Manual push+pull">Sync</button>
-      <button id="pullBtn" title="Manual pull only">Pull</button>
-      <span id="syncStatus" class="status">Sync: idle</span>
-    </div>
-  </header>
-
-  <section class="panel">
-    <div class="grid head" style="margin-bottom:6px">
-      <div>Task Name</div>
-      <div>Time [IST]</div>
-      <div class="daycell">Mon</div>
-      <div class="daycell">Tue</div>
-      <div class="daycell">Wed</div>
-      <div class="daycell">Thu</div>
-      <div class="daycell">Fri</div>
-      <div class="daycell">Sat</div>
-      <div class="daycell">Sun</div>
-      <div></div>
-    </div>
-    <div id="list"></div>
-    <div class="hint">Tick the weekdays for recurring schedule. Everything autosaves and live-syncs.</div>
-  </section>
-
-  <footer>
-    <div class="status" id="counts">0 tasks</div>
-    <div class="status">Remote DB: <span class="mono">https://couch.techstudy.me/plan</span></div>
-  </footer>
-</div>
-
-<!-- PouchDB -->
 <script src="https://cdn.jsdelivr.net/npm/pouchdb@8.0.1/dist/pouchdb.min.js"></script>
 <script>
 (function(){
-  const REMOTE = 'https://couch.techstudy.me/plan'; // public DB
-  const LOCAL_NAME = 'dayplan';                       // IndexedDB name
+  const REMOTE = 'https://couch.techstudy.me/plan';
+  const LOCAL_NAME = 'dayplan';
   const TZ = 'Asia/Kolkata';
 
   const db = new PouchDB(LOCAL_NAME);
@@ -91,23 +15,43 @@
   const syncStatus = document.getElementById('syncStatus');
   const countsEl = document.getElementById('counts');
 
-  // ---------- Utilities ----------
   const uid = () => 'task:' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-  const emptyDays = () => [false,false,false,false,false,false,false];  // Mon..Sun
-  const debounce = (fn,ms=250)=>{ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }};
+  const emptyDays = () => [false,false,false,false,false,false,false];
+  const debounce = (fn,ms=300)=>{ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }};
 
   function isoNow(){ return new Date().toISOString(); }
 
-  // ---------- Rendering ----------
+  // ---------- Editing guard (prevents rerender while typing) ----------
   let cache = [];
+  let editingId = null;
+  let isEditing = false;
+  let pendingRerender = false;
 
+  // track focus entering/leaving a row
+  listEl.addEventListener('focusin', (e)=>{
+    const row = e.target.closest('.row');
+    if(row){ editingId = row.dataset.id; isEditing = true; }
+  });
+  // when focus truly leaves the edited row, allow a rerender
+  listEl.addEventListener('focusout', (e)=>{
+    setTimeout(()=>{
+      const act = document.activeElement;
+      const stillInside = act && act.closest && act.closest(`.row[data-id="${editingId}"]`);
+      if(!stillInside){
+        isEditing = false;
+        editingId = null;
+        if(pendingRerender){ pendingRerender = false; render(); }
+      }
+    }, 0);
+  });
+
+  // ---------- Rendering ----------
   function render(){
     // sort by time then name
     cache.sort((a,b)=>{
       const ta = a.time||'99:99', tb=b.time||'99:99';
-      if(ta<tb) return -1; if(ta>tb) return 1;
-      const na=(a.title||'').toLowerCase(), nb=(b.title||'').toLowerCase();
-      return na.localeCompare(nb);
+      if(ta!==tb) return ta<tb?-1:1;
+      return (a.title||'').localeCompare(b.title||'');
     });
 
     listEl.innerHTML = '';
@@ -116,50 +60,47 @@
       row.className = 'grid row';
       row.dataset.id = doc._id;
 
-      // task title
       const title = document.createElement('input');
-      title.type='text'; title.placeholder='Task name';
+      title.type='text';
+      title.placeholder='Task name';
       title.value = doc.title||'';
       title.oninput = onEdit;
 
-      // time (IST)
       const time = document.createElement('input');
-      time.type='time'; time.step=60; time.value = doc.time||'';
+      time.type='time'; time.step=60;
+      time.value = doc.time||'';
       time.oninput = onEdit;
 
       row.appendChild(title);
       row.appendChild(time);
 
-      // days checkboxes Mon..Sun
       const d = doc.days || emptyDays();
       for(let i=0;i<7;i++){
         const cell = document.createElement('div');
         cell.className='daycell';
         const lab = document.createElement('label');
-        const cb = document.createElement('input'); cb.type='checkbox'; cb.checked = !!d[i];
+        const cb = document.createElement('input');
+        cb.type='checkbox'; cb.checked = !!d[i];
         cb.onchange = onEdit;
         lab.appendChild(cb);
         cell.appendChild(lab);
         row.appendChild(cell);
       }
 
-      // delete button
       const del = document.createElement('button');
-      del.className='del'; del.title='Delete';
-      del.textContent='🗑';
-      del.onclick = async ()=>{ try{
-        const fresh = await db.get(doc._id);
-        await db.remove(fresh);
-      }catch(e){ console.error(e); }
+      del.className='del'; del.title='Delete'; del.textContent='🗑';
+      del.onclick = async ()=>{
+        try{ const fresh = await db.get(doc._id); await db.remove(fresh); }catch(e){ console.error(e); }
       };
       row.appendChild(del);
 
-      // stash fields for save
-      row._inputs = { title, time, days: ()=> Array.from(row.querySelectorAll('input[type=checkbox]')).map(x=>x.checked) };
+      row._inputs = {
+        title,
+        time,
+        days: ()=> Array.from(row.querySelectorAll('input[type=checkbox]')).map(x=>x.checked)
+      };
 
-      // placeholder style
       if(!doc.title && !doc.time) row.classList.add('empty');
-
       listEl.appendChild(row);
     });
 
@@ -177,40 +118,39 @@
     const id = row.dataset.id;
     try{
       const fresh = await db.get(id);
-      const title = row._inputs.title.value.trim();
-      const time = row._inputs.time.value;
-      const days = row._inputs.days();
-
-      // avoid saving totally empty docs
-      fresh.title = title;
-      fresh.time  = time;
-      fresh.days  = days;
+      fresh.title = row._inputs.title.value.trim();
+      fresh.time  = row._inputs.time.value;
+      fresh.days  = row._inputs.days();
       fresh.tz    = TZ;
       fresh.updatedAt = isoNow();
-
       await db.put(fresh);
+      // local cache update (optimistic) without re-render
+      const i = cache.findIndex(x=>x._id===id);
+      if(i>=0) cache[i] = {...fresh};
     }catch(e){ console.error(e); }
   }
 
-  // ---------- Data loading ----------
   async function loadAll(){
     const res = await db.allDocs({include_docs:true, startkey:'task:', endkey:'task:\ufff0'});
     cache = res.rows.map(r=>r.doc);
     render();
   }
 
-  // live UI updates when local DB changes
+  // Live local changes → update cache incrementally; render only if safe
   db.changes({since:'now', live:true, include_docs:true})
-    .on('change', async (c)=>{
-      if(!c.doc) return;
-      if(!c.id.startsWith('task:')) return;  // ignore non-task docs
+    .on('change', (c)=>{
+      if(!c.doc || !c.id.startsWith('task:')) return;
+
       const i = cache.findIndex(x=>x._id===c.id);
-      if(c.deleted){
-        if(i>=0) cache.splice(i,1);
+      if(c.deleted){ if(i>=0) cache.splice(i,1); }
+      else{ if(i>=0) cache[i]=c.doc; else cache.push(c.doc); }
+
+      // If the changed doc is the one we are typing in, delay render
+      if(isEditing && c.id===editingId){
+        pendingRerender = true; // render after blur
       }else{
-        if(i>=0) cache[i]=c.doc; else cache.push(c.doc);
+        render();
       }
-      render();
     })
     .on('error', err=>console.error('changes error', err));
 
@@ -229,15 +169,13 @@
     await db.put(doc);
   };
 
-  // ---------- Manual sync/pull ----------
+  // ---------- Manual sync / pull ----------
+  function setStatus(s){ syncStatus.textContent = 'Sync: ' + s; }
+
   syncBtn.onclick = async ()=>{
     setStatus('Manual sync…');
-    try{
-      await db.replicate.to(remote);
-      await db.replicate.from(remote);
-      setStatus('Manual sync complete');
-    }catch(e){
-      console.error(e); setStatus('Manual sync error'); }
+    try{ await db.replicate.to(remote); await db.replicate.from(remote); setStatus('Manual sync complete'); }
+    catch(e){ console.error(e); setStatus('Manual sync error'); }
   };
 
   pullBtn.onclick = async ()=>{
@@ -247,22 +185,21 @@
   };
 
   // ---------- Live sync both ways ----------
-  function setStatus(s){ syncStatus.textContent = 'Sync: ' + s; }
   function startLiveSync(){
     const s = PouchDB.sync(db, remote, {live:true, retry:true});
-    s.on('change', info => setStatus('changed'))
+    s.on('change', ()=> setStatus('changed'))
      .on('paused', err => setStatus(err ? 'paused (err)' : 'paused'))
-     .on('active', () => setStatus('active'))
-     .on('denied', () => setStatus('denied'))
-     .on('complete', () => setStatus('complete'))
+     .on('active', ()=> setStatus('active'))
+     .on('denied', ()=> setStatus('denied'))
+     .on('complete', ()=> setStatus('complete'))
      .on('error', err => { console.error(err); setStatus('error'); });
   }
 
-  // ---------- Visit heartbeat (so a visit is also a local change → pushes instantly) ----------
+  // ---------- Visit heartbeat ----------
   async function recordVisit(){
     const id = 'app:state';
     try{
-      let d; try{ d = await db.get(id); } catch(e){ d = {_id:id}; }
+      let d; try{ d = await db.get(id); } catch{ d = {_id:id}; }
       d.lastVisitedAt = isoNow();
       await db.put(d);
     }catch(e){ console.error(e); }
@@ -271,22 +208,10 @@
   // ---------- Boot ----------
   (async function boot(){
     await loadAll();
-    // First-time devices or after clearing storage: do an immediate pull
-    try { await db.replicate.from(remote); } catch(e){ console.warn('initial pull failed', e); }
+    try{ await db.replicate.from(remote); }catch(e){ console.warn('initial pull failed', e); }
     startLiveSync();
     recordVisit();
   })();
 
 })();
 </script>
-
-<!--
-  CouchDB setup (one-time):
-  1) Create DB: plan
-  2) Make it public: in Database > Security, leave Admins and Members empty (or add "nobody").
-  3) Enable CORS globally: Origins=*, Methods=GET,PUT,POST,DELETE,HEAD,OPTIONS, Content-Type=application/json
-     and set "Enable CORS" + "Enable credentials" off (since public).
-  That’s it. Open this page on any device → it pulls instantly; edits push live.
--->
-</body>
-</html>
